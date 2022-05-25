@@ -36,13 +36,14 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    "authentication",
+    "user",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
 ]
 
 MIDDLEWARE = [
@@ -132,10 +133,10 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-AUTH_USER_MODEL = "authentication.User"
+AUTH_USER_MODEL = "user.User"
 
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "mentoring.exceptions.core_exception_handler",
     "NON_FIELD_ERRORS_KEY": "error",
-    "DEFAULT_AUTHENTICATION_CLASSES": ("authentication.backends.JWTAuthentication",),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("user.backends.JWTAuthentication",),
 }
