@@ -29,6 +29,16 @@ class UserGetTestCase(BaseAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class UserUpdateTestCase(BaseAPITestCase):
+    url = USER_URL + "{pk}/"
+
+    def test_update(self):
+        response = self.user.put(
+            self.url.format(pk=self.admin.user_id), data={"username": "new_username"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class UserGetCurrentTestCase(BaseAPITestCase):
     url = USER_URL + "me/"
 
