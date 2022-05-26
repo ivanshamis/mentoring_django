@@ -41,18 +41,6 @@ class AdminGetTestCase(UserGetTestCase):
         cls.request_user = cls.admin
         cls.tested_user = cls.user
 
-    def test_get(self):
-        super().test_get()
-
-    def test_get_non_auth(self):
-        super().test_get_non_auth()
-
-    def test_get_not_exists(self):
-        super().test_get_not_exists()
-
-    def test_get_bad_pk(self):
-        super().test_get_bad_pk()
-
 
 class AdminUpdateTestCase(BaseAPITestCase):
     url = ADMIN_URL + "{pk}/"
