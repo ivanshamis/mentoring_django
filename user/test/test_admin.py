@@ -1,5 +1,6 @@
 from rest_framework import status
 
+from .test_user import UserGetTestCase
 from .utils import BaseAPITestCase
 from ..models import User
 
@@ -29,3 +30,25 @@ class AdminListingTestCase(BaseAPITestCase):
     def test_listing_non_admin(self):
         response = self.user.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AdminGetTestCase(UserGetTestCase):
+    url = ADMIN_URL + "{pk}/"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.request_user = cls.admin
+        cls.tested_user = cls.user
+
+    def test_get(self):
+        super().test_get()
+
+    def test_get_non_auth(self):
+        super().test_get_non_auth()
+
+    def test_get_not_exists(self):
+        super().test_get_not_exists()
+
+    def test_get_bad_pk(self):
+        super().test_get_bad_pk()

@@ -29,6 +29,9 @@ class TestUser(object):
 
 
 class BaseAPITestCase(APITestCase):
+    user = None
+    admin = None
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

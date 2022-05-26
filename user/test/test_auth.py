@@ -101,7 +101,7 @@ class UserSignupTestCase(BaseAPITestCase):
 
 
 class UserLoginTestCase(BaseAPITestCase):
-    url = f"{AUTH_URL}login/"
+    url = AUTH_URL + "login/"
 
     def test_login(self):
         existing_user = self.user.get_user()

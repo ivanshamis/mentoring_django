@@ -8,24 +8,32 @@ USER_URL = "/api/user/"
 class UserGetTestCase(BaseAPITestCase):
     url = USER_URL + "{pk}/"
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.request_user = cls.user
+        cls.tested_user = cls.admin
+
     def test_get(self):
-        response = self.user.get(self.url.format(pk=self.admin.user_id))
+        response = self.request_user.get(self.url.format(pk=self.tested_user.user_id))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for field in ["id", "email", "username", "first_name", "last_name"]:
             self.assertEqual(
-                response.data.get(field), getattr(self.admin.get_user(), field)
+                response.data.get(field), getattr(self.tested_user.get_user(), field)
             )
 
     def test_get_non_auth(self):
-        response = self.user.get(self.url.format(pk=self.admin.user_id), auth=False)
+        response = self.request_user.get(
+            self.url.format(pk=self.tested_user.user_id), auth=False
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_get_not_exists(self):
-        response = self.user.get(self.url.format(pk=1000))
+        response = self.request_user.get(self.url.format(pk=1000))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_get_bad_pk(self):
-        response = self.user.get(self.url.format(pk="some_string"))
+        response = self.request_user.get(self.url.format(pk="some_string"))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
