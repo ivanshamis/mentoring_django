@@ -31,6 +31,6 @@ class TestUser(object):
 class BaseAPITestCase(APITestCase):
     @classmethod
     def setUpClass(cls):
-        super(BaseAPITestCase, cls).setUpClass()
+        super().setUpClass()
         cls.user = TestUser()
         cls.admin = TestUser(is_staff=True)

@@ -43,12 +43,12 @@ class UserViewSet(RetrieveModelMixin, UpdateModelMixin, GenericViewSet):
     def get_object(self):
         if self.kwargs.get("pk") == self.current_user:
             return self.request.user
-        return super(UserViewSet, self).get_object()
+        return super().get_object()
 
     def update(self, request, *args, **kwargs):
         if self.kwargs["pk"] != self.current_user:
             return Response({"error": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
-        return super(UserViewSet, self).update(request, *args, **kwargs)
+        return super().update(request, *args, **kwargs)
 
 
 class AdminUserViewSet(
@@ -66,7 +66,7 @@ class AdminUserViewSet(
     def get_serializer_class(self):
         if self.action == "create":
             return RegistrationSerializer
-        return super(AdminUserViewSet, self).get_serializer_class()
+        return super().get_serializer_class()
 
     def perform_destroy(self, instance):
         instance.is_active = False
