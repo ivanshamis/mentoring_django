@@ -52,3 +52,23 @@ class AdminGetTestCase(UserGetTestCase):
 
     def test_get_bad_pk(self):
         super().test_get_bad_pk()
+
+
+class AdminUpdateTestCase(BaseAPITestCase):
+    url = ADMIN_URL + "{pk}/"
+
+    def test_update(self):
+        new_username = "new_username_from_admin"
+        response = self.admin.put(
+            self.url.format(pk=self.user.user_id), data={"username": new_username}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.user.get_user().username, new_username)
+
+    def test_update_non_auth(self):
+        response = self.admin.put(self.url, data={"username": "username"}, auth=False)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_non_admin(self):
+        response = self.user.put(self.url, data={"username": "username"}, auth=False)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

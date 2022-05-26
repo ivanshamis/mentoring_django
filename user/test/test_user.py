@@ -69,13 +69,11 @@ class UserUpdateCurrentTestCase(BaseAPITestCase):
         self.assertEqual(self.user.get_user().username, new_username)
 
     def test_update_me_non_auth(self):
-        response = self.user.put(
-            self.url, data={"username": "very_new_username"}, auth=False
-        )
+        response = self.user.put(self.url, data={"username": "username"}, auth=False)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_update_me_no_username(self):
-        response = self.user.put(self.url, data={"first_name": "new_first_name"})
+        response = self.user.put(self.url, data={"first_name": "first_name"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue("errors" in response.data)
 
