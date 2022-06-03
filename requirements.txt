@@ -4,3 +4,4 @@ django-environ<0.9
 PyJWT==2.4.0
 djangorestframework==3.13.1
 factory-boy==3.2.1
+coreapi<3

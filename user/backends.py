@@ -1,10 +1,16 @@
 import jwt
 
 from django.conf import settings
+from django.contrib.auth.backends import ModelBackend
 
 from rest_framework import authentication, exceptions
 
 from .models import User
+
+
+class CustomModelBackend(ModelBackend):
+    def user_can_authenticate(self, user):
+        return True
 
 
 class JWTAuthentication(authentication.BaseAuthentication):
@@ -33,17 +39,17 @@ class JWTAuthentication(authentication.BaseAuthentication):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms="HS256")
         except Exception as e:
-            msg = f"Ошибка аутентификации. Невозможно декодировать токен {e}"
+            msg = f"Authentication failed. Unable to decode the token {e}"
             raise exceptions.AuthenticationFailed(msg)
 
         try:
             user = User.objects.get(pk=payload["id"])
         except User.DoesNotExist:
-            msg = "Пользователь соответствующий данному токену не найден."
+            msg = "The user corresponding to the given token was not found."
             raise exceptions.AuthenticationFailed(msg)
 
         if not user.is_active:
-            msg = "Данный пользователь деактивирован."
+            msg = "This user is deactivated."
             raise exceptions.AuthenticationFailed(msg)
 
         return user, token

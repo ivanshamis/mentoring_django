@@ -1,11 +1,14 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
+from .constants import ErrorMessages
 from .models import User
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(max_length=128, min_length=8, write_only=True)
+    password = serializers.CharField(
+        max_length=128, min_length=ErrorMessages.MIN_PASSWORD_LENGTH, write_only=True
+    )
 
     class Meta:
         model = User
@@ -25,11 +28,9 @@ class LoginSerializer(serializers.Serializer):
             username=validated_data["username"], password=validated_data["password"]
         )
         if not user:
-            raise serializers.ValidationError(
-                "A user with this email and password was not found."
-            )
+            raise serializers.ValidationError(ErrorMessages.USER_WRONG_CREDENTIALS)
         if not user.is_active:
-            raise serializers.ValidationError("This user has been deactivated.")
+            raise serializers.ValidationError(ErrorMessages.USER_IS_DEACTIVATED)
 
         return user
 
@@ -67,3 +68,12 @@ class UserSerializer(serializers.ModelSerializer):
 class AdminSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
         read_only_fields = UserSerializer.Meta.read_only_fields_for_all + ("password",)
+
+
+class AdminCreateUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["email", "username", "is_staff"]
+
+    def create(self, validated_data):
+        return self.Meta.model.objects.create_user(**validated_data)

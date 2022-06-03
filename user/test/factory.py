@@ -10,5 +10,7 @@ class UserFactory(django.DjangoModelFactory):
     email = Faker("email")
     password = Faker("password")
 
+    # TODO create with make password
+
     class Meta:
         model = User
