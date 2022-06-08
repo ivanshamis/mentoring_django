@@ -4,6 +4,8 @@ import jwt
 
 from datetime import datetime, timedelta
 
+from django.dispatch import receiver
+from django.db.models.signals import post_save
 from django.conf import settings
 from django.contrib.auth.models import (
     AbstractBaseUser,
@@ -12,8 +14,10 @@ from django.contrib.auth.models import (
 )
 
 from django.db import models
+from django.urls import reverse
 
-from .constants import ErrorMessages
+from user.constants import ErrorMessages, email_templates, token_expire_hours
+from user.message_sender import email_sender
 
 
 class UserManager(BaseUserManager):
@@ -48,7 +52,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(db_index=True, unique=True)
     first_name = models.CharField(max_length=100, null=True, blank=False)
     last_name = models.CharField(max_length=100, null=True, blank=False)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -63,7 +67,25 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def token(self):
-        return self._generate_jwt_token()
+        return self._generate_jwt_token(
+            hours=token_expire_hours["login"], action="login"
+        )
+
+    @property
+    def activate_token(self):
+        return self._generate_jwt_token(
+            hours=token_expire_hours["activate"], action="activate"
+        )
+
+    @property
+    def activation_url(self):
+        return f"{settings.SITE_URL}{reverse('api:auth-activate')}?token={self.activate_token}"
+
+    @property
+    def password_token(self):
+        return self._generate_jwt_token(
+            hours=token_expire_hours["password"], action="password"
+        )
 
     def get_full_name(self):
         return self.username
@@ -71,13 +93,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_short_name(self):
         return self.username
 
-    def _generate_jwt_token(self):
-        dt = datetime.now() + timedelta(days=1)
+    def _generate_jwt_token(self, hours: int, action: str):
+        dt = datetime.now() + timedelta(hours=hours)
 
         token = jwt.encode(
-            {"id": str(self.pk), "exp": int(dt.strftime("%s"))},
+            {
+                "id": str(self.pk),
+                "action": action,
+                "exp": int(dt.strftime("%s")),
+            },
             settings.SECRET_KEY,
             algorithm="HS256",
         )
 
         return token
+
+
+@receiver(post_save, sender=User)
+def save_profile(sender, instance, created, **kwargs):
+    if created:
+        email_sender.send_message(
+            instance, email_templates.get_activation_message(instance)
+        )

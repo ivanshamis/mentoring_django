@@ -2,10 +2,13 @@ import jwt
 
 from django.conf import settings
 from django.contrib.auth.backends import ModelBackend
+from django.core.cache import cache
 
 from rest_framework import authentication, exceptions
+from rest_framework.exceptions import AuthenticationFailed
 
-from .models import User
+from user.constants import token_expire_hours
+from user.models import User
 
 
 class CustomModelBackend(ModelBackend):
@@ -37,19 +40,53 @@ class JWTAuthentication(authentication.BaseAuthentication):
 
     def _authenticate_credentials(self, request, token):
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms="HS256")
+            payload = decode_token(token)
         except Exception as e:
             msg = f"Authentication failed. Unable to decode the token {e}"
-            raise exceptions.AuthenticationFailed(msg)
+            raise AuthenticationFailed(msg)
+
+        if payload.get("action") != "login":
+            msg = "The token is not intended for login"
+            raise AuthenticationFailed(msg)
 
         try:
-            user = User.objects.get(pk=payload["id"])
+            user = get_payload_user(payload)
         except User.DoesNotExist:
             msg = "The user corresponding to the given token was not found."
-            raise exceptions.AuthenticationFailed(msg)
+            raise AuthenticationFailed(msg)
 
         if not user.is_active:
             msg = "This user is deactivated."
-            raise exceptions.AuthenticationFailed(msg)
+            raise AuthenticationFailed(msg)
 
         return user, token
+
+
+def decode_token(token: str):
+    return jwt.decode(token, settings.SECRET_KEY, algorithms="HS256")
+
+
+def get_payload_user(payload: dict):
+    return User.objects.get(pk=payload["id"])
+
+
+def validate_token(token: str, action: str):
+    if cache.get(token):
+        return None
+
+    try:
+        payload = decode_token(token)
+    except Exception:
+        return None
+
+    if payload.get("action") != action:
+        return None
+
+    try:
+        user = get_payload_user(payload)
+    except User.DoesNotExist:
+        return None
+
+    cache.set(token, user.pk, 3600 * token_expire_hours[action])
+
+    return user

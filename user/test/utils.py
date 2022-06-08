@@ -1,12 +1,11 @@
 import random
 import string
 
-from django.contrib.auth.hashers import make_password
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 
-from .factory import UserFactory
-from ..models import User
+from user.test.factory import UserFactory
+from user.models import User
 
 
 class TestUser(object):
@@ -15,7 +14,9 @@ class TestUser(object):
             random.choices(string.ascii_letters + string.digits, k=8)
         )
         user = UserFactory.create(
-            is_staff=is_staff, password=make_password(self.user_password)
+            is_staff=is_staff,
+            password=self.user_password,
+            is_active=True,
         )
         self.user_id = user.id
         self._client_auth = APIClient()

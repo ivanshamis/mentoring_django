@@ -1,4 +1,15 @@
-class ErrorMessagesClass:
+from user.message_sender import Message
+
+MIN_PASSWORD_LENGTH = 8
+
+token_expire_hours = {
+    "login": 24,
+    "activate": 1,
+    "password": 1,
+}
+
+
+class ErrorMessages:
     # LoginSerializer
     USER_IS_DEACTIVATED = "This user has been deactivated."
     USER_WRONG_CREDENTIALS = "A user with this email and password was not found."
@@ -15,15 +26,21 @@ class ErrorMessagesClass:
     NOT_VALID_EMAIL = "Enter a valid email address."
     NO_PERMISSION = "You do not have permission to perform this action."
 
-    MIN_PASSWORD_LENGTH = 8
-    _USER_FIELD_EXISTS = "user with this {field} already exists."
-    _WEAK_PASSWORD = "Ensure this field has at least {min_length} characters."
-
-    def get_user_exists_message(self, field: str):
-        return self._USER_FIELD_EXISTS.format(field=field)
-
-    def get_week_password_message(self):
-        return self._WEAK_PASSWORD.format(min_length=self.MIN_PASSWORD_LENGTH)
+    USER_FIELD_EXISTS = "user with this {field} already exists."
+    WEAK_PASSWORD = "Ensure this field has at least {min_length} characters."
+    INVALID_TOKEN = "Invalid token"
 
 
-ErrorMessages = ErrorMessagesClass()
+class EmailTemplates:
+    _ACTIVATE_ACCOUNT = Message(
+        subject="Please activate your account",
+        body="Activation URL: {activation_url}",
+    )
+
+    def get_activation_message(self, user):
+        message = self._ACTIVATE_ACCOUNT
+        message.body = message.body.format(activation_url=user.activation_url)
+        return message
+
+
+email_templates = EmailTemplates()

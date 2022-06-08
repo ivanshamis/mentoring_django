@@ -145,3 +145,9 @@ REST_FRAMEWORK = {
 }
 
 AUTHENTICATION_BACKENDS = ("user.backends.CustomModelBackend",)
+
+DEFAULT_EMAIL_SENDER = "admin@mentoring.com"
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+SITE_URL = "http://localhost:8000"

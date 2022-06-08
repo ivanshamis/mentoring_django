@@ -9,15 +9,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-
 from mentoring.serializers import EmptySerializer
 from .models import User
 from .serializers import (
+    ActivationSerializer,
+    AdminCreateUserSerializer,
+    AdminSerializer,
     LoginSerializer,
     RegistrationSerializer,
     UserSerializer,
-    AdminSerializer,
-    AdminCreateUserSerializer,
 )
 
 
@@ -31,6 +31,10 @@ class AuthViewSet(CreateModelMixin, GenericViewSet):
 
     @action(detail=False, methods=["post"], serializer_class=RegistrationSerializer)
     def signup(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], serializer_class=ActivationSerializer)
+    def activate(self, request, *args, **kwargs):
         return self.create(request, *args, **kwargs)
 
 

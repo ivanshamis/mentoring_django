@@ -1,11 +1,12 @@
-from django.contrib.auth.hashers import make_password
+from unittest.mock import patch
+
 from django.urls import reverse
 from rest_framework import status
 
-from .factory import UserFactory
-from .utils import BaseAPITestCase
-from ..constants import ErrorMessages
-from ..models import User
+from user.test.factory import UserFactory
+from user.test.utils import BaseAPITestCase
+from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH, email_templates
+from user.models import User
 
 API_AUTH = "api:auth"
 
@@ -27,11 +28,25 @@ class UserSignupTestCase(BaseAPITestCase):
         self.assertEqual(
             response.data, {"email": new_user.email, "username": new_user.username}
         )
-        self.assertTrue(
-            User.objects.filter(
-                email=new_user.email, username=new_user.username
-            ).exists()
-        )
+        user = User.objects.filter(email=new_user.email, username=new_user.username)
+        self.assertTrue(user.exists())
+        self.assertTrue(not user.get().is_active)
+
+    def test_signup_send_email(self):
+        new_user = UserFactory.build()
+        with patch("user.message_sender.EmailSender._send_email") as mock:
+            self.user.post_non_auth(
+                self.url,
+                data={
+                    "email": new_user.email,
+                    "username": new_user.username,
+                    "password": new_user.password,
+                },
+            )
+            mock.assert_called_with(
+                email=new_user.email,
+                message=email_templates.get_activation_message(new_user),
+            )
 
     def test_signup_exists(self):
         existing_user = self.user.get_user()
@@ -47,7 +62,7 @@ class UserSignupTestCase(BaseAPITestCase):
         for field in ["email", "username"]:
             self.assertEqual(
                 response.data.get("errors").get(field)[0],
-                ErrorMessages.get_user_exists_message(field),
+                ErrorMessages.USER_FIELD_EXISTS.format(field=field),
             )
 
     def test_signup_no_email(self):
@@ -107,13 +122,13 @@ class UserSignupTestCase(BaseAPITestCase):
             data={
                 "email": new_user.email,
                 "username": new_user.username,
-                "password": "1" * (ErrorMessages.MIN_PASSWORD_LENGTH - 1),
+                "password": "1" * (MIN_PASSWORD_LENGTH - 1),
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             response.data.get("errors").get("password")[0],
-            ErrorMessages.get_week_password_message(),
+            ErrorMessages.WEAK_PASSWORD.format(min_length=MIN_PASSWORD_LENGTH),
         )
 
 
@@ -132,9 +147,7 @@ class UserLoginTestCase(BaseAPITestCase):
 
     def test_inactive(self):
         existing_password = self.user.user_password
-        user = UserFactory.create(
-            is_active=False, password=make_password(existing_password)
-        )
+        user = UserFactory.create(is_active=False, password=existing_password)
         response = self.user.post_non_auth(
             self.url,
             data={"username": user.email, "password": existing_password},
