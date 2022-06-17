@@ -21,7 +21,10 @@ class TestUser(object):
         self.user_id = user.id
         self._client_auth = APIClient()
         self._client_non_auth = APIClient()
-        self._client_auth.credentials(HTTP_AUTHORIZATION="Token " + user.token)
+        self.set_auth_token(user.token)
+
+    def set_auth_token(self, token: str):
+        self._client_auth.credentials(HTTP_AUTHORIZATION="Token " + token)
 
     def get_user(self):
         return User.objects.get(pk=self.user_id)

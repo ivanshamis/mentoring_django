@@ -9,6 +9,13 @@ services:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+  redis:
+    image: redis
+    restart: always
+    volumes:
+      - "redis:/data"
+    ports:
+      - "6379:6379"
   web:
     build: .
     command: python manage.py runserver 0.0.0.0:8000
@@ -22,3 +29,8 @@ services:
       - POSTGRES_PASSWORD=postgres
     depends_on:
       - db
+    links:
+      - redis
+
+volumes:
+  redis: {}

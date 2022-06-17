@@ -4,10 +4,10 @@ from django.conf import settings
 from django.contrib.auth.backends import ModelBackend
 from django.core.cache import cache
 
-from rest_framework import authentication, exceptions
+from rest_framework import authentication
 from rest_framework.exceptions import AuthenticationFailed
 
-from user.constants import token_expire_hours
+from user.constants import ErrorMessages
 from user.models import User
 
 
@@ -39,54 +39,40 @@ class JWTAuthentication(authentication.BaseAuthentication):
         return self._authenticate_credentials(request, token)
 
     def _authenticate_credentials(self, request, token):
-        try:
-            payload = decode_token(token)
-        except Exception as e:
-            msg = f"Authentication failed. Unable to decode the token {e}"
-            raise AuthenticationFailed(msg)
-
-        if payload.get("action") != "login":
-            msg = "The token is not intended for login"
-            raise AuthenticationFailed(msg)
-
-        try:
-            user = get_payload_user(payload)
-        except User.DoesNotExist:
-            msg = "The user corresponding to the given token was not found."
-            raise AuthenticationFailed(msg)
+        user, token = validate_token(token, action="login")
 
         if not user.is_active:
-            msg = "This user is deactivated."
-            raise AuthenticationFailed(msg)
+            raise AuthenticationFailed(ErrorMessages.USER_IS_DEACTIVATED)
 
         return user, token
 
 
 def decode_token(token: str):
-    return jwt.decode(token, settings.SECRET_KEY, algorithms="HS256")
+    return jwt.decode(token, settings.PUBLIC_KEY, algorithms="RS256")
 
 
 def get_payload_user(payload: dict):
     return User.objects.get(pk=payload["id"])
 
 
-def validate_token(token: str, action: str):
+def validate_token(token: str, action: str, invalidate: bool = False):
     if cache.get(token):
-        return None
+        raise AuthenticationFailed(ErrorMessages.INVALID_TOKEN)
 
     try:
         payload = decode_token(token)
     except Exception:
-        return None
+        raise AuthenticationFailed(ErrorMessages.INVALID_TOKEN)
 
     if payload.get("action") != action:
-        return None
+        raise AuthenticationFailed(ErrorMessages.INVALID_TOKEN_ACTION)
 
     try:
         user = get_payload_user(payload)
     except User.DoesNotExist:
-        return None
+        raise AuthenticationFailed(ErrorMessages.INVALID_TOKEN_USER)
 
-    cache.set(token, user.pk, 3600 * token_expire_hours[action])
+    if invalidate:
+        cache.set(token, user.pk, settings.TOKEN_EXPIRES[action])
 
-    return user
+    return user, token

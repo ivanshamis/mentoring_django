@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from user.backends import validate_token
 from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH
+from user.message_sender import email_sender
 from user.models import User
 
 
@@ -39,14 +40,59 @@ class LoginSerializer(serializers.Serializer):
         pass
 
 
+class PasswordResetSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=255)
+
+    def validate(self, data):
+        try:
+            user = User.objects.get(username=data["username"])
+        except User.DoesNotExist:
+            raise serializers.ValidationError(ErrorMessages.USER_NOT_FOUND)
+        data["user"] = user
+        return data
+
+    def create(self, validated_data):
+        user = validated_data["user"]
+        email_sender.send_message(user, user.get_email_message("PASSWORD_RESET"))
+        return user
+
+    def update(self, instance, validated_data):
+        pass
+
+
+class PasswordSetupSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=255, read_only=True)
+    token = serializers.CharField(max_length=255, write_only=True)
+    password = serializers.CharField(
+        max_length=128, min_length=MIN_PASSWORD_LENGTH, write_only=True
+    )
+
+    def validate(self, data):
+        user, _ = validate_token(
+            token=data["token"], action="password", invalidate=True
+        )
+        if not user:
+            raise serializers.ValidationError(ErrorMessages.INVALID_TOKEN)
+        data["user"] = user
+        return data
+
+    def create(self, validated_data):
+        user = validated_data["user"]
+        user.set_password(validated_data["password"])
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        pass
+
+
 class ActivationSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=255, read_only=True)
     is_active = serializers.BooleanField(read_only=True)
 
     def validate(self, data):
-        user = validate_token(
-            token=self.context["request"].query_params.get("token"), action="activate"
-        )
+        token = self.context["request"].query_params.get("token")
+        user, _ = validate_token(token=token, action="activate", invalidate=True)
         if not user:
             raise serializers.ValidationError(ErrorMessages.INVALID_TOKEN)
         data["user"] = user

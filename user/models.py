@@ -16,7 +16,7 @@ from django.contrib.auth.models import (
 from django.db import models
 from django.urls import reverse
 
-from user.constants import ErrorMessages, email_templates, token_expire_hours
+from user.constants import ErrorMessages, EmailTemplates
 from user.message_sender import email_sender
 
 
@@ -46,6 +46,22 @@ class UserManager(BaseUserManager):
         return user
 
 
+def generate_token_by_pk(action: str, pk: uuid.UUID):
+    dt = datetime.now() + timedelta(seconds=settings.TOKEN_EXPIRES[action])
+
+    token = jwt.encode(
+        {
+            "id": str(pk),
+            "action": action,
+            "exp": int(dt.strftime("%s")),
+        },
+        settings.PRIVATE_KEY,
+        algorithm="RS256",
+    )
+
+    return token
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(db_index=True, max_length=255, unique=True)
@@ -67,25 +83,24 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def token(self):
-        return self._generate_jwt_token(
-            hours=token_expire_hours["login"], action="login"
-        )
+        return self.generate_token(action="login")
 
-    @property
-    def activate_token(self):
-        return self._generate_jwt_token(
-            hours=token_expire_hours["activate"], action="activate"
-        )
+    def get_url(self, action: str, path: str):
+        token = self.generate_token(action=action)
+        return f"{settings.SITE_URL}{reverse(path)}?token={token}"
 
-    @property
-    def activation_url(self):
-        return f"{settings.SITE_URL}{reverse('api:auth-activate')}?token={self.activate_token}"
+    def get_activate_url(self):
+        return self.get_url(action="activate", path="api:auth-activate")
 
-    @property
-    def password_token(self):
-        return self._generate_jwt_token(
-            hours=token_expire_hours["password"], action="password"
-        )
+    def get_password_url(self):
+        return self.get_url(action="password", path="api:auth-password-setup")
+
+    def get_email_message(self, template: str):
+        action = template.split("_")[0].lower()
+        get_action_url = getattr(self, f"get_{action}_url")
+        message = EmailTemplates.templates[template]
+        message.body = message.body.format(url=get_action_url())
+        return message
 
     def get_full_name(self):
         return self.username
@@ -93,25 +108,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_short_name(self):
         return self.username
 
-    def _generate_jwt_token(self, hours: int, action: str):
-        dt = datetime.now() + timedelta(hours=hours)
-
-        token = jwt.encode(
-            {
-                "id": str(self.pk),
-                "action": action,
-                "exp": int(dt.strftime("%s")),
-            },
-            settings.SECRET_KEY,
-            algorithm="HS256",
-        )
-
-        return token
+    def generate_token(self, action: str):
+        return generate_token_by_pk(action=action, pk=self.pk)
 
 
 @receiver(post_save, sender=User)
 def save_profile(sender, instance, created, **kwargs):
     if created:
         email_sender.send_message(
-            instance, email_templates.get_activation_message(instance)
+            instance, instance.get_email_message("ACTIVATE_ACCOUNT")
         )

@@ -1,12 +1,16 @@
+import time
+import uuid
 from unittest.mock import patch
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
 from user.test.factory import UserFactory
+from user.test.test_user import API_DETAIL
 from user.test.utils import BaseAPITestCase
-from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH, email_templates
-from user.models import User
+from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH
+from user.models import User, generate_token_by_pk
 
 API_AUTH = "api:auth"
 
@@ -45,7 +49,7 @@ class UserSignupTestCase(BaseAPITestCase):
             )
             mock.assert_called_with(
                 email=new_user.email,
-                message=email_templates.get_activation_message(new_user),
+                message=new_user.get_email_message("ACTIVATE_ACCOUNT"),
             )
 
     def test_signup_exists(self):
@@ -170,3 +174,177 @@ class UserLoginTestCase(BaseAPITestCase):
         self.assertEqual(
             response.data.get("errors")[0], ErrorMessages.USER_WRONG_CREDENTIALS
         )
+
+
+class UserLogoutTestCase(BaseAPITestCase):
+    url = reverse(API_AUTH + "-logout")
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.api_detail = API_DETAIL
+        cls.default_pk = "me"
+
+    def test_logout(self):
+        existing_user = self.user.get_user()
+        response = self.user.post_non_auth(
+            self.url,
+            data={"token": existing_user.token},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data.get("username"), existing_user.username)
+
+        response = self.user.get(self.get_detail_url("me"))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    def test_invalid_token(self):
+        response = self.user.post_non_auth(self.url, data={"token": "invalid"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    def test_invalid_token_action(self):
+        existing_user = self.user.get_user()
+        response = self.user.post_non_auth(
+            self.url,
+            data={"token": existing_user.generate_token("activate")},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data.get("detail"), ErrorMessages.INVALID_TOKEN_ACTION
+        )
+
+    def test_invalid_token_user(self):
+        response = self.user.post_non_auth(
+            self.url,
+            data={"token": generate_token_by_pk(action="login", pk=uuid.uuid4())},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN_USER)
+
+
+class UserResetPasswordTestCase(BaseAPITestCase):
+    url = reverse(API_AUTH + "-password-reset")
+
+    def test_reset_password(self):
+        existing_user = self.user.get_user()
+        with patch("user.message_sender.EmailSender._send_email") as mock:
+            response = self.user.post_non_auth(
+                self.url, data={"username": existing_user.username}
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(response.data.get("username"), existing_user.username)
+            mock.assert_called_with(
+                email=existing_user.email,
+                message=existing_user.get_email_message("PASSWORD_RESET"),
+            )
+
+    def test_reset_user_not_found(self):
+        existing_user = self.user.get_user()
+        response = self.user.post_non_auth(
+            self.url, data={"username": existing_user.username + "_wrong"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("error")[0], ErrorMessages.USER_NOT_FOUND
+        )
+
+
+class UserSetupPasswordTestCase(BaseAPITestCase):
+    url = reverse(API_AUTH + "-password-setup")
+    url_login = reverse(API_AUTH + "-login")
+    new_password = "new_password"
+
+    def test_setup_password(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("password")
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data.get("username"), existing_user.username)
+
+        response = self.user.post_non_auth(
+            self.url_login,
+            data={"username": existing_user.email, "password": self.new_password},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue("token" in response.data)
+
+    def test_setup_password_no_password(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("password")
+        response = self.user.post_non_auth(self.url, data={"token": token})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("password")[0],
+            ErrorMessages.FIELD_IS_REQUIRED,
+        )
+
+    def test_setup_weak_password(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("password")
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": "1" * (MIN_PASSWORD_LENGTH - 1)}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("password")[0],
+            ErrorMessages.WEAK_PASSWORD.format(min_length=MIN_PASSWORD_LENGTH),
+        )
+
+    def test_setup_password_no_token(self):
+        response = self.user.post_non_auth(
+            self.url, data={"password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("token")[0], ErrorMessages.FIELD_IS_REQUIRED
+        )
+
+    def test_setup_password_invalid_token_user(self):
+        token = generate_token_by_pk(action="password", pk=uuid.uuid4())
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN_USER)
+
+    def test_setup_password_invalid_token_action(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("login")
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data.get("detail"), ErrorMessages.INVALID_TOKEN_ACTION
+        )
+
+    def test_setup_password_invalid_token(self):
+        token = "xxx-xxx-xxx-xxx"
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    @override_settings(TOKEN_EXPIRES={"password": 1})
+    def test_setup_password_token_expired(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("password")
+        time.sleep(2)
+        response = self.user.post_non_auth(
+            self.url, data={"token": token, "password": self.new_password}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    def test_setup_password_token_is_used(self):
+        existing_user = self.user.get_user()
+        token = existing_user.generate_token("password")
+        data = {"token": token, "password": self.new_password}
+        self.user.post_non_auth(self.url, data=data)
+        response = self.user.post_non_auth(self.url, data=data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)

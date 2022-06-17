@@ -2,12 +2,6 @@ from user.message_sender import Message
 
 MIN_PASSWORD_LENGTH = 8
 
-token_expire_hours = {
-    "login": 24,
-    "activate": 1,
-    "password": 1,
-}
-
 
 class ErrorMessages:
     # LoginSerializer
@@ -29,18 +23,26 @@ class ErrorMessages:
     USER_FIELD_EXISTS = "user with this {field} already exists."
     WEAK_PASSWORD = "Ensure this field has at least {min_length} characters."
     INVALID_TOKEN = "Invalid token"
+    INVALID_TOKEN_ACTION = "Invalid token action"
+    INVALID_TOKEN_USER = "The user corresponding to the given token was not found."
+    USER_NOT_FOUND = "User not found"
 
 
 class EmailTemplates:
-    _ACTIVATE_ACCOUNT = Message(
-        subject="Please activate your account",
-        body="Activation URL: {activation_url}",
-    )
-
-    def get_activation_message(self, user):
-        message = self._ACTIVATE_ACCOUNT
-        message.body = message.body.format(activation_url=user.activation_url)
-        return message
+    templates = {
+        "ACTIVATE_ACCOUNT": Message(
+            subject="Please activate your account",
+            body="Activation URL: {url}",
+        ),
+        "PASSWORD_RESET": Message(
+            subject="Password reset",
+            body="Password reset url: {url}",
+        ),
+        "PASSWORD_SETUP": Message(
+            subject="Password setup",
+            body="Password setup url: {url}",
+        ),
+    }
 
 
 email_templates = EmailTemplates()

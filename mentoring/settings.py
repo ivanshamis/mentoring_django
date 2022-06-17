@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/4.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
+import sys
 
 import environ
 from pathlib import Path
@@ -26,9 +27,12 @@ env.read_env(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
 
 SECRET_KEY = env.str("SECRET_KEY")
+PRIVATE_KEY = open("private.pem").read()
+PUBLIC_KEY = open("public.pem").read()
+# JWT_ALGORITHM = ""
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool("DEBUG")
 
 ALLOWED_HOSTS = []
 
@@ -43,6 +47,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_filters",
     "rest_framework",
 ]
 
@@ -142,12 +147,29 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 10,
     "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.coreapi.AutoSchema",
+    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
 }
 
 AUTHENTICATION_BACKENDS = ("user.backends.CustomModelBackend",)
 
-DEFAULT_EMAIL_SENDER = "admin@mentoring.com"
+DEFAULT_EMAIL_SENDER = env.str("DEFAULT_EMAIL_SENDER")
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = env.str("EMAIL_BACKEND")
 
-SITE_URL = "http://localhost:8000"
+SITE_URL = env.str("SITE_URL")
+
+TOKEN_EXPIRES = {
+    "login": 24 * 3_600,
+    "activate": 1 * 3_600,
+    "password": 1 * 3_600,
+}
+
+TESTING = "test" in sys.argv
+
+if not TESTING:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": "redis://redis:6379",
+        }
+    }

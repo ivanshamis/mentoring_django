@@ -1,7 +1,12 @@
+import time
+import uuid
+
+from django.test import override_settings
 from rest_framework import status
 
 from ..constants import ErrorMessages
 from .utils import BaseAPITestCase
+from ..models import generate_token_by_pk
 
 API_DETAIL = "api:user-detail"
 
@@ -30,7 +35,7 @@ class UserGetTestCase(BaseAPITestCase):
         self.assertEqual(response.data.get("detail"), ErrorMessages.NOT_AUTHENTICATED)
 
     def test_get_not_exists(self):
-        response = self.request_user.get(self.get_detail_url(1000000))
+        response = self.request_user.get(self.get_detail_url(1_000_000))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(response.data.get("detail"), ErrorMessages.NOT_FOUND)
 
@@ -70,6 +75,39 @@ class UserGetCurrentTestCase(BaseAPITestCase):
         response = self.user.get_non_auth(self.get_detail_url())
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data.get("detail"), ErrorMessages.NOT_AUTHENTICATED)
+
+    @override_settings(TOKEN_EXPIRES={"login": 1})
+    def test_get_me_login_expired(self):
+        self.user.set_auth_token(self.user.get_user().token)
+        time.sleep(1)
+        response = self.user.get(self.get_detail_url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        time.sleep(2)
+        response = self.user.get(self.get_detail_url())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    def test_get_me_invalid_token(self):
+        self.user.set_auth_token("xxx-xxx-xxx")
+        response = self.user.get(self.get_detail_url())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
+
+    def test_get_me_invalid_token_action(self):
+        token = self.user.get_user().generate_token("password")
+        self.user.set_auth_token(token)
+        response = self.user.get(self.get_detail_url())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data.get("detail"), ErrorMessages.INVALID_TOKEN_ACTION
+        )
+
+    def test_get_me_invalid_token_user(self):
+        token = generate_token_by_pk(action="login", pk=uuid.uuid4())
+        self.user.set_auth_token(token)
+        response = self.user.get(self.get_detail_url())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN_USER)
 
 
 class UserUpdateCurrentTestCase(BaseAPITestCase):
