@@ -22,10 +22,15 @@ class ErrorMessages:
 
     USER_FIELD_EXISTS = "user with this {field} already exists."
     WEAK_PASSWORD = "Ensure this field has at least {min_length} characters."
+    WEAK_PASSWORD_SPEC = "Ensure the password contains characters in both cases, digits and special characters"
     INVALID_TOKEN = "Invalid token"
     INVALID_TOKEN_ACTION = "Invalid token action"
     INVALID_TOKEN_USER = "The user corresponding to the given token was not found."
     USER_NOT_FOUND = "User not found"
+
+    PASSWORD_NO_MATCH = "The passwords don't match"
+    PASSWORD_IS_WRONG = "The old password is wrong"
+    PASSWORD_THE_SAME = "The new password must be different from the old one"
 
 
 class EmailTemplates:

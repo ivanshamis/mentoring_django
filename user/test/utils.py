@@ -21,10 +21,14 @@ class TestUser(object):
         self.user_id = user.id
         self._client_auth = APIClient()
         self._client_non_auth = APIClient()
+        self._client_custom_auth = APIClient()
         self.set_auth_token(user.token)
 
     def set_auth_token(self, token: str):
         self._client_auth.credentials(HTTP_AUTHORIZATION="Token " + token)
+
+    def set_custom_auth_token(self, token: str):
+        self._client_custom_auth.credentials(HTTP_AUTHORIZATION="Token " + token)
 
     def get_user(self):
         return User.objects.get(pk=self.user_id)
@@ -35,11 +39,14 @@ class TestUser(object):
     def get_non_auth(self, url):
         return self._client_non_auth.get(url)
 
-    def post(self, url, data):
+    def post(self, url, data=None):
         return self._client_auth.post(url, data)
 
-    def post_non_auth(self, url, data):
+    def post_non_auth(self, url, data=None):
         return self._client_non_auth.post(url, data)
+
+    def post_custom_auth(self, url, data=None):
+        return self._client_custom_auth.post(url, data)
 
     def put(self, url, data):
         return self._client_auth.put(url, data)

@@ -1,4 +1,5 @@
 import jwt
+import re
 
 from django.conf import settings
 from django.contrib.auth.backends import ModelBackend
@@ -7,7 +8,7 @@ from django.core.cache import cache
 from rest_framework import authentication
 from rest_framework.exceptions import AuthenticationFailed
 
-from user.constants import ErrorMessages
+from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH
 from user.models import User
 
 
@@ -76,3 +77,13 @@ def validate_token(token: str, action: str, invalidate: bool = False):
         cache.set(token, user.pk, settings.TOKEN_EXPIRES[action])
 
     return user, token
+
+
+def validate_password(p: str) -> bool:
+    conditions = [
+        re.search(r"[a-z]", p),
+        re.search(r"[A-Z]", p),
+        re.search(r"[0-9]", p),
+        re.search(r"\W", p),
+    ]
+    return all(conditions)

@@ -1,9 +1,8 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
-from user.backends import validate_token
+from user.backends import validate_token, validate_password
 from user.constants import ErrorMessages, MIN_PASSWORD_LENGTH
-from user.message_sender import email_sender
 from user.models import User
 
 
@@ -11,6 +10,11 @@ class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         max_length=128, min_length=MIN_PASSWORD_LENGTH, write_only=True
     )
+
+    def validate(self, data):
+        if not validate_password(data["password"]):
+            raise serializers.ValidationError(ErrorMessages.WEAK_PASSWORD_SPEC)
+        return data
 
     class Meta:
         model = User
@@ -40,29 +44,9 @@ class LoginSerializer(serializers.Serializer):
         pass
 
 
-class PasswordResetSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=255)
-
-    def validate(self, data):
-        try:
-            user = User.objects.get(username=data["username"])
-        except User.DoesNotExist:
-            raise serializers.ValidationError(ErrorMessages.USER_NOT_FOUND)
-        data["user"] = user
-        return data
-
-    def create(self, validated_data):
-        user = validated_data["user"]
-        email_sender.send_message(user, user.get_email_message("PASSWORD_RESET"))
-        return user
-
-    def update(self, instance, validated_data):
-        pass
-
-
 class PasswordSetupSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=255, read_only=True)
-    token = serializers.CharField(max_length=255, write_only=True)
+    token = serializers.CharField(max_length=500, write_only=True)
     password = serializers.CharField(
         max_length=128, min_length=MIN_PASSWORD_LENGTH, write_only=True
     )
@@ -74,6 +58,8 @@ class PasswordSetupSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError(ErrorMessages.INVALID_TOKEN)
         data["user"] = user
+        if not validate_password(data["password"]):
+            raise serializers.ValidationError(ErrorMessages.WEAK_PASSWORD_SPEC)
         return data
 
     def create(self, validated_data):
@@ -83,6 +69,37 @@ class PasswordSetupSerializer(serializers.Serializer):
         return user
 
     def update(self, instance, validated_data):
+        pass
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=255, read_only=True)
+    old_password = serializers.CharField(max_length=128, min_length=1, write_only=True)
+    password = serializers.CharField(
+        max_length=128, min_length=MIN_PASSWORD_LENGTH, write_only=True
+    )
+    password_repeat = serializers.CharField(
+        max_length=128, min_length=MIN_PASSWORD_LENGTH, write_only=True
+    )
+
+    def validate(self, data):
+        if data["old_password"] == data["password"]:
+            raise serializers.ValidationError(ErrorMessages.PASSWORD_THE_SAME)
+        if data["password"] != data["password_repeat"]:
+            raise serializers.ValidationError(ErrorMessages.PASSWORD_NO_MATCH)
+        if not validate_password(data["password"]):
+            raise serializers.ValidationError(ErrorMessages.WEAK_PASSWORD_SPEC)
+        return data
+
+    def update(self, instance, validated_data):
+        user = instance
+        if not user.check_password(validated_data["old_password"]):
+            raise serializers.ValidationError(ErrorMessages.PASSWORD_IS_WRONG)
+        user.set_password(validated_data["password"])
+        user.save()
+        return user
+
+    def create(self, validated_data):
         pass
 
 
@@ -123,21 +140,10 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields_for_all = ("id", "email")
         read_only_fields = read_only_fields_for_all + ("is_active", "is_staff")
 
-    def update(self, instance, validated_data):
-        for key, value in validated_data.items():
-            if key == "password":
-                instance.set_password(value)
-            else:
-                setattr(instance, key, value)
-
-        instance.save()
-
-        return instance
-
 
 class AdminSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
-        read_only_fields = UserSerializer.Meta.read_only_fields_for_all + ("password",)
+        read_only_fields = UserSerializer.Meta.read_only_fields_for_all
 
 
 class AdminCreateUserSerializer(serializers.ModelSerializer):

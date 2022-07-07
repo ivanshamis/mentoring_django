@@ -186,39 +186,32 @@ class UserLogoutTestCase(BaseAPITestCase):
         cls.default_pk = "me"
 
     def test_logout(self):
-        existing_user = self.user.get_user()
-        response = self.user.post_non_auth(
-            self.url,
-            data={"token": existing_user.token},
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data.get("username"), existing_user.username)
+        response = self.user.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
         response = self.user.get(self.get_detail_url("me"))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
 
-    def test_invalid_token(self):
-        response = self.user.post_non_auth(self.url, data={"token": "invalid"})
+    def test_logout_non_auth(self):
+        response = self.user.post_non_auth(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN)
 
-    def test_invalid_token_action(self):
+    def test_logout_invalid_token_action(self):
         existing_user = self.user.get_user()
-        response = self.user.post_non_auth(
-            self.url,
-            data={"token": existing_user.generate_token("activate")},
-        )
+        self.user.set_custom_auth_token(existing_user.generate_token("activate"))
+        response = self.user.post_custom_auth(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
             response.data.get("detail"), ErrorMessages.INVALID_TOKEN_ACTION
         )
 
     def test_invalid_token_user(self):
-        response = self.user.post_non_auth(
-            self.url,
-            data={"token": generate_token_by_pk(action="login", pk=uuid.uuid4())},
+        self.user.set_custom_auth_token(
+            generate_token_by_pk(action="login", pk=uuid.uuid4())
         )
+        response = self.user.post_custom_auth(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data.get("detail"), ErrorMessages.INVALID_TOKEN_USER)
 
@@ -232,8 +225,7 @@ class UserResetPasswordTestCase(BaseAPITestCase):
             response = self.user.post_non_auth(
                 self.url, data={"username": existing_user.username}
             )
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            self.assertEqual(response.data.get("username"), existing_user.username)
+            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
             mock.assert_called_with(
                 email=existing_user.email,
                 message=existing_user.get_email_message("PASSWORD_RESET"),
@@ -244,16 +236,13 @@ class UserResetPasswordTestCase(BaseAPITestCase):
         response = self.user.post_non_auth(
             self.url, data={"username": existing_user.username + "_wrong"}
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data.get("errors").get("error")[0], ErrorMessages.USER_NOT_FOUND
-        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
 class UserSetupPasswordTestCase(BaseAPITestCase):
     url = reverse(API_AUTH + "-password-setup")
     url_login = reverse(API_AUTH + "-login")
-    new_password = "new_password"
+    new_password = "newP@ssw0rd"
 
     def test_setup_password(self):
         existing_user = self.user.get_user()

@@ -1,7 +1,3 @@
-import csv
-from datetime import datetime
-
-from django.http import StreamingHttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_excel.renderers import XLSXRenderer
 from rest_framework import status, filters
@@ -12,19 +8,21 @@ from rest_framework.mixins import (
     UpdateModelMixin,
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from rest_framework_csv.renderers import CSVRenderer
 
 from mentoring.serializers import EmptySerializer
 from .backends import validate_token
+from .message_sender import email_sender
 from .models import User
 from .serializers import (
     ActivationSerializer,
     AdminCreateUserSerializer,
     AdminSerializer,
     LoginSerializer,
-    PasswordResetSerializer,
+    PasswordChangeSerializer,
     PasswordSetupSerializer,
     RegistrationSerializer,
     UserSerializer,
@@ -52,9 +50,15 @@ class AuthViewSet(CreateModelMixin, GenericViewSet):
     def activate(self, request, *args, **kwargs):
         return self.create(request, *args, **kwargs)
 
-    @action(detail=False, methods=["post"], serializer_class=PasswordResetSerializer)
+    @action(detail=False, methods=["post"])
     def password_reset(self, request, *args, **kwargs):
-        return self.create(request, *args, **kwargs)
+        try:
+            user = User.objects.get(username=request.data["username"])
+        except User.DoesNotExist:
+            user = None
+        if user:
+            email_sender.send_message(user, user.get_email_message("PASSWORD_RESET"))
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], serializer_class=PasswordSetupSerializer)
     def password_setup(self, request, *args, **kwargs):
@@ -67,15 +71,26 @@ class UserViewSet(RetrieveModelMixin, UpdateModelMixin, GenericViewSet):
     permission_classes = (IsAuthenticated,)
     current_user = "me"
 
+    @staticmethod
+    def make_not_allowed_response():
+        return Response({"error": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
+    def is_current_user(self):
+        return self.kwargs["pk"] == self.current_user
+
     def get_object(self):
         if self.kwargs.get("pk") == self.current_user:
             return self.request.user
         return super().get_object()
 
     def update(self, request, *args, **kwargs):
-        if self.kwargs["pk"] != self.current_user:
-            return Response({"error": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        if not self.is_current_user():
+            return self.make_not_allowed_response()
         return super().update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], serializer_class=PasswordChangeSerializer)
+    def change_password(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
 
 
 class AdminUserViewSet(ModelViewSet):
@@ -85,27 +100,16 @@ class AdminUserViewSet(ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["username", "email", "first_name", "last_name"]
     ordering_fields = ["username", "email", "first_name", "last_name"]
+    renderer_classes = [JSONRenderer, CSVRenderer, XLSXRenderer]
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
 
         page = self.paginate_queryset(queryset)
-        if page is not None:
+        if page and request.query_params.get("format") not in ["xlsx", "csv"]:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=["get"], renderer_classes=([CSVRenderer]))
-    def export_csv(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=["get"], renderer_classes=([XLSXRenderer]))
-    def export_xlsx(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 

@@ -4,11 +4,12 @@ import uuid
 from django.test import override_settings
 from rest_framework import status
 
-from ..constants import ErrorMessages
+from ..constants import ErrorMessages, MIN_PASSWORD_LENGTH
 from .utils import BaseAPITestCase
 from ..models import generate_token_by_pk
 
 API_DETAIL = "api:user-detail"
+API_CHANGE_PASSWORD = "api:user-change-password"
 
 
 class UserGetTestCase(BaseAPITestCase):
@@ -166,3 +167,103 @@ class UserUpdateCurrentTestCase(BaseAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.user.get_user().is_staff, old_is_staff)
+
+
+class UserChangePasswordTestCase(BaseAPITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.api_detail = API_CHANGE_PASSWORD
+        cls.default_pk = "me"
+        new_password = "P@ssw0rd"
+        cls.valid_data = {
+            "old_password": cls.user.user_password,
+            "password": new_password,
+            "password_repeat": new_password,
+        }
+
+    def test_change_password(self):
+        data = dict(self.valid_data)
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get("username"), self.user.get_user().username)
+        self.assertTrue(self.user.get_user().check_password(data["password"]))
+
+    def test_change_password_wrong_old(self):
+        data = dict(self.valid_data)
+        data["old_password"] += "_wrong"
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors")[0],
+            ErrorMessages.PASSWORD_IS_WRONG,
+        )
+
+    def test_change_password_wrong_repeat(self):
+        data = dict(self.valid_data)
+        data["password_repeat"] += "_wrong"
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("error")[0],
+            ErrorMessages.PASSWORD_NO_MATCH,
+        )
+
+    def test_change_password_non_auth(self):
+        data = dict(self.valid_data)
+        response = self.user.post_non_auth(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("detail"), ErrorMessages.NOT_AUTHENTICATED)
+
+    def test_change_password_not_me(self):
+        data = dict(self.valid_data)
+        response = self.user.post(self.get_detail_url(pk=self.user.user_id), data=data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("error"), ErrorMessages.NOT_ALLOWED)
+
+    @staticmethod
+    def change_data_password(data, password):
+        data.update({"password": password, "password_repeat": password})
+        return data
+
+    def test_change_password_weak(self):
+        data = dict(self.valid_data)
+        weak_password = "1" * (MIN_PASSWORD_LENGTH - 1)
+        data = self.change_data_password(data, weak_password)
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        for field in ["password", "password_repeat"]:
+            self.assertEqual(
+                response.data.get("errors").get(field)[0],
+                ErrorMessages.WEAK_PASSWORD.format(min_length=MIN_PASSWORD_LENGTH),
+            )
+
+    def test_change_password_weak_no_digits(self):
+        data = dict(self.valid_data)
+        data = self.change_data_password(data, "P@ssword")
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("error")[0],
+            ErrorMessages.WEAK_PASSWORD_SPEC,
+        )
+
+    def test_change_password_weak_no_upper(self):
+        data = dict(self.valid_data)
+        data = self.change_data_password(data, "p@ssword")
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("error")[0],
+            ErrorMessages.WEAK_PASSWORD_SPEC,
+        )
+
+    def test_change_password_weak_no_spec(self):
+        data = dict(self.valid_data)
+        data = self.change_data_password(data, "Passw0rd")
+        response = self.user.post(self.get_detail_url(), data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data.get("errors").get("error")[0],
+            ErrorMessages.WEAK_PASSWORD_SPEC,
+        )
